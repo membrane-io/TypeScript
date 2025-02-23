@@ -31871,6 +31871,19 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                 if (isStatic(declaration)) {
                     return getContextualTypeForStaticPropertyDeclaration(declaration, contextFlags);
                 }
+                break;
+            // MEMBRANE: support contextual types for top-level exports
+            case SyntaxKind.VariableDeclaration:
+                if (isInTopLevelContext(declaration) && hasSyntacticModifier(declaration.parent.parent, ModifierFlags.Export) && isIdentifier(declaration.name)) {
+                    const ns = globals.get(escapeLeadingUnderscores("resolvers"));
+                    const exports = ns && getExportsOfSymbol(ns);
+                    const exportSymbol = exports?.get(declaration.name.escapedText);
+                    const typeAlias = exportSymbol && exportSymbol.declarations![0] as TypeAliasDeclaration;
+                    const type = typeAlias && getTypeFromTypeNode(typeAlias.type);
+                    const links = getNodeLinks(declaration);
+                    links.resolvedType = type;
+                    return type;
+                }
                 // By default, do nothing and return undefined - only the above cases have context implied by a parent
         }
     }
@@ -44994,7 +45007,18 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
             error(node.name, Diagnostics.A_bigint_literal_cannot_be_used_as_a_property_name);
         }
 
-        const type = convertAutoToAny(getTypeOfSymbol(symbol));
+        // MEMBRANE: support contextual types for top-level exports
+        let type;
+        if (isInTopLevelContext(node) && hasSyntacticModifier(node.parent.parent, ModifierFlags.Export) && isIdentifier(node.name)) {
+            const ns = globals.get(escapeLeadingUnderscores("resolvers"));
+            const exports = ns && getExportsOfSymbol(ns);
+            const exportSymbol = exports?.get(node.name.escapedText);
+            const typeAlias = exportSymbol && exportSymbol.declarations![0] as TypeAliasDeclaration;
+            type = typeAlias && getTypeFromTypeNode(typeAlias.type);
+        }
+        if (!type) {
+            type = convertAutoToAny(getTypeOfSymbol(symbol));
+        }
         if (node === symbol.valueDeclaration) {
             // Node is the primary declaration of the symbol, just validate the initializer
             // Don't validate for-in initializer as it is already an error
