@@ -1,8 +1,8 @@
 {
-    "name": "typescript",
+    "name": "@membrane/typescript",
     "author": "Microsoft Corp.",
     "homepage": "https://www.typescriptlang.org/",
-    "version": "5.9.3",
+    "version": "5.9.3-1",
     "license": "Apache-2.0",
     "description": "TypeScript is a language for application scale JavaScript development",
     "keywords": [

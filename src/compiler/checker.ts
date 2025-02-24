@@ -21166,8 +21166,10 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
     }
 
     function isContextSensitiveFunctionOrObjectLiteralMethod(func: Node): func is FunctionExpression | ArrowFunction | MethodDeclaration {
-        return (isFunctionExpressionOrArrowFunction(func) || isObjectLiteralMethod(func)) &&
-            isContextSensitiveFunctionLikeDeclaration(func);
+        // TODO: Check if it's index.ts?
+        const isMembraneExport = hasSyntacticModifier(func, ModifierFlags.Export);
+        return isMembraneExport || ((isFunctionExpressionOrArrowFunction(func) || isObjectLiteralMethod(func)) &&
+            isContextSensitiveFunctionLikeDeclaration(func));
     }
 
     function getTypeWithoutSignatures(type: Type): Type {
@@ -32761,6 +32763,28 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                 return getContextualJsxElementAttributesType(parent as JsxOpeningLikeElement, contextFlags);
             case SyntaxKind.ImportAttribute:
                 return getContextualImportAttributeType(parent as ImportAttribute);
+            // MEMBRANE: support contextual types for top-level function exports
+            case SyntaxKind.SourceFile: {
+                if (node.kind === SyntaxKind.FunctionDeclaration) {
+                    return getContextualTypeForFunctionDeclaration((node as any) as FunctionDeclaration, contextFlags);
+                }
+                break;
+            }
+        }
+        return undefined;
+    }
+
+    // MEMBRANE: support contextual types for top-level function exports
+    function getContextualTypeForFunctionDeclaration(node: FunctionDeclaration, _contextFlags: ContextFlags | undefined): Type | undefined {
+        if (isInTopLevelContext(node) && hasSyntacticModifier(node, ModifierFlags.Export) && (node.name && isIdentifier(node.name))) {
+            const ns = globals.get(escapeLeadingUnderscores("resolvers"));
+            const exports = ns && getExportsOfSymbol(ns);
+            const exportSymbol = exports?.get(node.name.escapedText);
+            const declaration = exportSymbol && exportSymbol.declarations![0] as FunctionDeclaration;
+            const signature = declaration && getSignatureFromDeclaration(declaration);
+            if (signature) {
+                return createAnonymousType(exportSymbol, createSymbolTable(), [signature], emptyArray, emptyArray);
+            }
         }
         return undefined;
     }
