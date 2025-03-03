@@ -19756,10 +19756,33 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
     }
 
     function isContextSensitiveFunctionOrObjectLiteralMethod(func: Node): func is FunctionExpression | ArrowFunction | MethodDeclaration {
-        // TODO: Check if it's index.ts?
-        const isMembraneExport = hasSyntacticModifier(func, ModifierFlags.Export);
+        const isMembraneExport = hasSyntacticModifier(func, ModifierFlags.Export) && isInIndexTs(func);
         return isMembraneExport || ((isFunctionExpressionOrArrowFunction(func) || isObjectLiteralMethod(func)) &&
             isContextSensitiveFunctionLikeDeclaration(func));
+    }
+
+    // MEMBRANE: Whether the node looks like a Membrane resolver. i.e. an exported top-level function in index.ts
+    function isMembraneFunctionResolver(node: FunctionDeclaration) {
+        return isInIndexTs(node) &&
+            isInTopLevelContext(node) &&
+            hasSyntacticModifier(node, ModifierFlags.Export) &&
+            node.name &&
+            isIdentifier(node.name);
+    }
+
+    // MEMBRANE: Whether the node looks like a Membrane resolver object. i.e. an exported top-level variable declaration in index.ts
+    function isMembraneResolversObject(declaration: VariableLikeDeclaration) {
+        return isInIndexTs(declaration) &&
+            isInTopLevelContext(declaration) &&
+            hasSyntacticModifier(declaration.parent.parent, ModifierFlags.Export) &&
+            isIdentifier(declaration.name);
+    }
+
+
+    // MEMBRANE: Whether the node is in index.ts
+    function isInIndexTs(node: Node): boolean {
+        const sourceFile = getSourceFileOfNode(node);
+        return !!sourceFile && /\/[^/]+\/index\.ts$/.test(sourceFile.fileName);
     }
 
     function getTypeWithoutSignatures(type: Type): Type {
@@ -29655,7 +29678,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                 break;
             // MEMBRANE: support contextual types for top-level exports
             case SyntaxKind.VariableDeclaration:
-                if (isInTopLevelContext(declaration) && hasSyntacticModifier(declaration.parent.parent, ModifierFlags.Export) && isIdentifier(declaration.name)) {
+                if (isMembraneResolversObject(declaration) && isIdentifier(declaration.name)) {
                     const ns = globals.get(escapeLeadingUnderscores("resolvers"));
                     const exports = ns && getExportsOfSymbol(ns);
                     const exportSymbol = exports?.get(declaration.name.escapedText);
@@ -30460,7 +30483,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
 
     // MEMBRANE: support contextual types for top-level function exports
     function getContextualTypeForFunctionDeclaration(node: FunctionDeclaration, _contextFlags: ContextFlags | undefined): Type | undefined {
-        if (isInTopLevelContext(node) && hasSyntacticModifier(node, ModifierFlags.Export) && (node.name && isIdentifier(node.name))) {
+        if (isMembraneFunctionResolver(node) && node.name) {
             const ns = globals.get(escapeLeadingUnderscores("resolvers"));
             const exports = ns && getExportsOfSymbol(ns);
             const exportSymbol = exports?.get(node.name.escapedText);
